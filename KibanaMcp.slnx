@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/KibanaMcp.Core/KibanaMcp.Core.csproj" />
+  <Project Path="src/KibanaMcp.Http/KibanaMcp.Http.csproj" />
+  <Project Path="src/KibanaMcp.Stdio/KibanaMcp.Stdio.csproj" />
+  <Project Path="src/KibanaMcp.Core.Tests/KibanaMcp.Core.Tests.csproj" />
+</Solution>
