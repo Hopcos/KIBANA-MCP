@@ -62,13 +62,16 @@ kibana-mcp/
 {
   "Environments": {
     "prod": {
-      "KibanaBaseUrl": "https://kibana-elk-pe-prod-dc2-jj.everymatrix.local",
+      "KibanaBaseUrl": "https://kibana.example.local",
       "UserName": "filebeat_writer",
       "Password": "kDe3LwTN8Pj56BkgCeDq"
     }
   },
   "DefaultTimeZone": "Asia/Shanghai",
   "RequestTimeoutMs": 120000,
+  "Kibana": {
+    "TlsInsecureHostPattern": "(^\\.)?(.*)\\.(local|internal)$"
+  },
   "Http": {
     "Path": "/mcp"
   }
@@ -81,6 +84,8 @@ kibana-mcp/
 | `Environments:<名称>:UserName` / `Password` | 随每次代理请求发送的 HTTP Basic 凭据。 |
 | `Environments:<名称>:KibanaVersion` *（可选）* | `kbn-version` 头中上报的版本。若与实际 Kibana 构建版本不匹配，Kibana 会以 400 "Browser client is out of date" 拒绝。默认 `7.17.28`（已针对目标生产网关验证）。 |
 | `Environments:<名称>:ProxyApiVersion` *（可选）* | `/api/console/proxy` 的 `apiVersion` 查询参数。部分构建会以 400 "definition for this key is missing" 拒绝。默认：省略。 |
+| `Environments:<名称>:SessionCookie` *（可选）* | 随每次代理请求发送的 `Cookie` 头，用于要求 SSO 会话 Cookie（例如 Authelia）的网关。从已登录浏览器捕获 `authelia_session=<值>`。 |
+| `Kibana:TlsInsecureHostPattern` | 与主机名匹配的正则；匹配的主机跳过 TLS 证书链校验（私有 CA）。空字符串表示对所有主机严格校验。 |
 | `DefaultTimeZone` | 调用未指定时使用的 IANA 时区。 |
 | `RequestTimeoutMs` | 单次 HTTP 请求超时。 |
 | `Http:Path` | （仅 HTTP 宿主）端点路径，默认 `/mcp`。 |

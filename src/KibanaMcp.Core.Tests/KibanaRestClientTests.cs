@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Moq.Protected;
 using Xunit;
@@ -15,7 +16,7 @@ namespace KibanaMcp.Tests;
 /// </summary>
 public class KibanaRestClientTests
 {
-    private const string KibanaUrl = "https://kibana-elk-pe-prod-dc2-jj.everymatrix.local";
+    private const string KibanaUrl = "https://kibana.local";
     private const string IconToolTip = "&lt;svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;16&quot; height=&quot;16&quot;&gt;&lt;text y=&quot;13&quot; font-size=&quot;13&quot; font-family=&quot;sans-serif&quot; fill=&quot;#808080&quot;&gt;i&lt;/text&gt;&lt;/svg&gt;";
 
     private static readonly EnvironmentConfig Prod = new(
@@ -33,6 +34,17 @@ public class KibanaRestClientTests
             .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(responder);
         return new KibanaRestClient(handler.Object);
+    }
+
+    private static KibanaRestClient CreateClient(string? insecureHostPattern)
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Kibana:TlsInsecureHostPattern"] = insecureHostPattern
+            })
+            .Build();
+        return new KibanaRestClient(configuration);
     }
 
     private static StringContent Html(string body) => new(body, Encoding.UTF8, "text/html");
@@ -74,7 +86,7 @@ public class KibanaRestClientTests
         // carries a <base href> on the authelia host and is detected as an SSO page. This is the exact
         // shape seen in production — 200 + HTML login page instead of the ES JSON response.
         ToolException ex = await PostErrorAsync(HttpStatusCode.OK, Html(
-            "<!doctype html><html><head><base href=\"https://authelia.cek8jj02-p3kt.everymatrix.local/\"></head><body><title>Authelia</title>...</body></html>"));
+            "<!doctype html><html><head><base href=\"https://authelia.example.local/\"></head><body><title>Authelia</title>...</body></html>"));
         Assert.Equal("AUTH_REQUIRED", ex.Code);
         Assert.Contains("authelia", JsonSerializer.Serialize(ex.Details), StringComparison.OrdinalIgnoreCase);
     }
@@ -93,7 +105,7 @@ public class KibanaRestClientTests
                 {
                     Content = new StringContent("", Encoding.UTF8, "text/html")
                 };
-                response.Headers.Location = new Uri("https://authelia.cek8jj02-p3kt.everymatrix.local/?rd=https%3A%2F%2Fkibana...%2Fapi%2Fconsole%2Fproxy%2...");
+                response.Headers.Location = new Uri("https://authelia.example.local/?rd=https%3A%2F%2Fkibana...%2Fapi%2Fconsole%2Fproxy%2...");
                 return response;
             });
         var client = new KibanaRestClient(handler.Object);
@@ -167,5 +179,33 @@ public class KibanaRestClientTests
 
         Assert.Equal(200, response.StatusCode);
         Assert.Contains("ubs-lottery-draw-2026.08.14", response.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InsecureHostPattern_IsAppliedWhenConfigured()
+    {
+        KibanaRestClient client = CreateClient("(^|\\.)corp\\.intern$");
+
+        Assert.True(client.IsInsecureHost("https://kibana-p01.corp.intern"));
+        Assert.True(client.IsInsecureHost("https://corp.intern/subpath"));
+        Assert.False(client.IsInsecureHost("https://other.example.com"));
+    }
+
+    [Fact]
+    public void InsecureHostPattern_WhenBlank_ValidatesEveryHostStrictly()
+    {
+        KibanaRestClient client = CreateClient("");
+
+        Assert.False(client.IsInsecureHost("https://kibana.local"));
+        Assert.False(client.IsInsecureHost("https://any.example.com"));
+    }
+
+    [Fact]
+    public void InsecureHostPattern_WhenInvalid_ValidatesEveryHostStrictly()
+    {
+        // A regex syntax typo in config must fail closed (strict TLS), not disable validation.
+        KibanaRestClient client = CreateClient("(^|.");
+
+        Assert.False(client.IsInsecureHost("https://kibana.local"));
     }
 }

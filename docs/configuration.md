@@ -25,7 +25,7 @@ Headers sent on every request:
 {
   "Environments": {
     "prod": {
-      "KibanaBaseUrl": "https://kibana-elk-pe-prod-dc2-jj.everymatrix.local",
+      "KibanaBaseUrl": "https://kibana.example.local",
       "UserName": "filebeat_writer",
       "Password": "kDe3LwTN8Pj56BkgCeDq",
       "KibanaVersion": "7.17.28",
@@ -34,6 +34,9 @@ Headers sent on every request:
   },
   "DefaultTimeZone": "Asia/Shanghai",
   "RequestTimeoutMs": 120000,
+  "Kibana": {
+    "TlsInsecureHostPattern": "(^\\.)?(.*)\\.(local|internal)$"
+  },
   "Http": { "Path": "/mcp" }
 }
 ```
@@ -54,6 +57,7 @@ Headers sent on every request:
 | --- | --- |
 | `DefaultTimeZone` | IANA identifier used when a call does not pass one. Defaults to `Asia/Shanghai`. |
 | `RequestTimeoutMs` | Per-request HTTP timeout in milliseconds. Default `120000`. |
+| `Kibana:TlsInsecureHostPattern` | Regex matched against the host name; matching hosts skip TLS chain validation (private CA). Empty string = validate every host. |
 | `Http:Path` | HTTP-host-only endpoint path served at `/`. Default `/mcp`. |
 
 ## Overriding at runtime
@@ -71,7 +75,7 @@ dotnet KibanaMcp.Stdio.dll --Environments:prod:UserName "you@corp" --Environment
 
 ## TLS / certificates
 
-Cluster hosts in the `everymatrix.local` domain are served by a private CA. The proxy client skips chain validation **only** when the request's host name ends in `.everymatrix.local` (or equals `everymatrix.local`); all other host names are validated strictly. The recommended production setup is to install the enterprise root CA on the host and remove that relaxation.
+With a private CA, set `Kibana:TlsInsecureHostPattern` to a host suffix (regex) whose certificate chain the client skips validating; it is applied only to hosts matching the pattern, all other host names are validated strictly. The shipped default matches internal single-label/corporate-local domains; adjust it to your own CA's domains, or set it to an empty string to validate every host strictly. The recommended production setup is to install the enterprise root CA on the host and remove this relaxation.
 
 ## Known gateway behavior (verified on prod 2026-08)
 

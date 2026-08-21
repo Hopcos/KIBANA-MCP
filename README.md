@@ -62,13 +62,16 @@ Copy the shipped `src/KibanaMcp.Core/appsettings.json` to the host output direct
 {
   "Environments": {
     "prod": {
-      "KibanaBaseUrl": "https://kibana-elk-pe-prod-dc2-jj.everymatrix.local",
+      "KibanaBaseUrl": "https://kibana.example.local",
       "UserName": "filebeat_writer",
       "Password": "kDe3LwTN8Pj56BkgCeDq"
     }
   },
   "DefaultTimeZone": "Asia/Shanghai",
   "RequestTimeoutMs": 120000,
+  "Kibana": {
+    "TlsInsecureHostPattern": "(^\\.)?(.*)\\.(local|internal)$"
+  },
   "Http": {
     "Path": "/mcp"
   }
@@ -82,6 +85,7 @@ Copy the shipped `src/KibanaMcp.Core/appsettings.json` to the host output direct
 | `Environments:<name>:KibanaVersion` *(optional)* | Version reported in the `kbn-version` header. Kibana answers 400 "Browser client is out of date" when this does not match the running build. Defaults to `7.17.28` (proven against the target production gateway). |
 | `Environments:<name>:ProxyApiVersion` *(optional)* | `apiVersion` query parameter for `/api/console/proxy`. Some builds reject it with 400 "definition for this key is missing". Default: omitted. |
 | `Environments:<name>:SessionCookie` *(optional)* | Verbatim `Cookie` header sent with every proxy request, for gateways that require the SSO session cookie (for example Authelia) in addition to Basic. Capture `authelia_session=<value>` from a logged-in browser. |
+| `Kibana:TlsInsecureHostPattern` | Regex matched against the host name; matching hosts skip TLS chain validation (private CA). Empty string = validate every host. Defaults to internal single-label domains. |
 | `DefaultTimeZone` | IANA time zone used when a call does not specify one. |
 | `RequestTimeoutMs` | Per-request HTTP timeout. |
 | `Http:Path` | (HTTP host only) endpoint path, default `/mcp`. |

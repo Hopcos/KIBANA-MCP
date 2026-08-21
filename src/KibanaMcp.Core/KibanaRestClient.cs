@@ -6,6 +6,10 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("KibanaMcp.Core.Tests")]
 
 namespace KibanaMcp;
 
@@ -20,7 +24,7 @@ namespace KibanaMcp;
 /// by the number of configured environments is the right scale). TCP connections and TLS session data
 /// are therefore reused under concurrent load instead of being opened per request. The per-environment
 /// client also closes over the host name so the private-CA certificate relaxation is scoped to hosts
-/// inside *.everymatrix.local rather than applied globally.
+/// matching the configured insecure-host pattern rather than applied globally.
 ///
 /// Compatibility: deployed Kibana gateways vary on two proxy parameters, so both are configurable per
 /// environment and default to values proven against the target production gateway: the version reported
@@ -30,9 +34,7 @@ namespace KibanaMcp;
 /// </summary>
 public sealed class KibanaRestClient
 {
-    private static readonly Regex EveryMatrixHostPattern = new(
-        @"(^|\.)everymatrix\.local$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private readonly Regex? _insecureHostPattern;
 
     // Proven against the production gateway: the version matched the running Kibana build and the
     // 7.17 console proxy rejected the apiVersion query parameter because no schema key exists for it.
@@ -46,10 +48,20 @@ public sealed class KibanaRestClient
     private readonly HttpMessageHandler? _handler;
 
     public KibanaRestClient()
+        : this((IConfiguration?)null)
     {
     }
 
-    public KibanaRestClient(HttpMessageHandler handler) => _handler = handler;
+    public KibanaRestClient(HttpMessageHandler handler)
+        : this((IConfiguration?)null)
+    {
+        _handler = handler;
+    }
+
+    public KibanaRestClient(IConfiguration? configuration)
+    {
+        _insecureHostPattern = CompileInsecureHostPattern(configuration?["Kibana:TlsInsecureHostPattern"]);
+    }
 
     public Task<ElasticResponse> PostAsync(EnvironmentConfig config, string path, object? body, CancellationToken cancellationToken)
         => SendAsync(config, HttpMethod.Post, path, body, cancellationToken);
@@ -153,9 +165,9 @@ public sealed class KibanaRestClient
         return _clients.GetOrAdd(kibanaBaseUrl.TrimEnd('/'), CreateEnvironmentClient);
     }
 
-    private static HttpClient CreateEnvironmentClient(string baseUrl)
+    private HttpClient CreateEnvironmentClient(string baseUrl)
     {
-        var allowInsecure = IsEveryMatrixHost(baseUrl);
+        var allowInsecure = IsInsecureHost(baseUrl);
         var handler = new SocketsHttpHandler
         {
             // Do not follow the gateway's SSO redirects: an Authelia-protected proxy answers a
@@ -168,10 +180,11 @@ public sealed class KibanaRestClient
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
             SslOptions = new SslClientAuthenticationOptions
             {
-                // Certificates come from a private CA (for example *.everymatrix.local). When the
-                // machine does not trust that root CA, skip chain validation only for hosts inside
-                // that domain; every other host name is validated strictly. Production recommendation:
-                // install the enterprise root CA and remove this relaxation.
+                // Certificates come from a private CA for hosts that match the configured insecure
+                // pattern (see "Kibana:TlsInsecureHostPattern"). When the machine does not trust that
+                // root CA, skip chain validation only for those hosts; every other host name is
+                // validated strictly. Production recommendation: install the enterprise root CA and
+                // remove this relaxation.
                 RemoteCertificateValidationCallback = (_, _, _, errors) => errors == SslPolicyErrors.None || allowInsecure
             }
         };
@@ -179,8 +192,13 @@ public sealed class KibanaRestClient
         return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
     }
 
-    private static bool IsEveryMatrixHost(string baseUrl)
+    internal bool IsInsecureHost(string baseUrl)
     {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return false;
+        }
+
         string host;
         try
         {
@@ -191,7 +209,34 @@ public sealed class KibanaRestClient
             return false;
         }
 
-        return EveryMatrixHostPattern.IsMatch(host);
+        // A blank pattern (blank config key) or invalid pattern (config typo) yields a null regex,
+        // i.e. strict TLS for every host rather than an accidental relaxation.
+        if (_insecureHostPattern is null)
+        {
+            return false;
+        }
+
+        return _insecureHostPattern.IsMatch(host);
+    }
+
+    /// <summary>Builds the insecure-host regex from the configured pattern. A blank or whitespace
+    /// value disables the relaxation entirely (strict TLS for every host); an invalid pattern is
+    /// suppressed the same way so a config typo cannot accidentally disable certificate validation.</summary>
+    private static Regex? CompileInsecureHostPattern(string? pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static string SerializeBody(object? body)

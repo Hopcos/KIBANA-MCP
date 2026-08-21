@@ -14,7 +14,7 @@ namespace KibanaMcp.Tests;
 /// </summary>
 public class KibanaLogServiceTests
 {
-    private const string KibanaUrl = "https://kibana-elk-pe-prod-dc2-jj.everymatrix.local";
+    private const string KibanaUrl = "https://kibana.local";
 
     private sealed class ServiceHarness
     {
@@ -100,7 +100,7 @@ public class KibanaLogServiceTests
             .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(
-                    "<!doctype html><html><head><base href=\"https://authelia.cek8jj02-p3kt.everymatrix.local/\"></head><body>login form</body></html>",
+                    "<!doctype html><html><head><base href=\"https://authelia.example.local/\"></head><body>login form</body></html>",
                     Encoding.UTF8,
                     "text/html")
             });
